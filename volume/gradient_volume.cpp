@@ -115,7 +115,26 @@ GradientVoxel GradientVolume::getGradientVoxelNN(const glm::vec3& coord) const
 // Use the linearInterpolate function that you implemented below.
 GradientVoxel GradientVolume::getGradientVoxelLinearInterpolate(const glm::vec3& coord) const
 {
-    return GradientVoxel {};
+    // Find the lower corner of the cube which the coordinate fits in
+    int x = floor(coord.x);
+    int y = floor(coord.y);
+    int z = floor(coord.z);
+
+    // Determine the factors for all axes
+    float fac_x = coord.x - x;
+    float fac_y = coord.y - y;
+    float fac_z = coord.z - z;
+
+    // Interpolate for all x-axes given the different sample points
+    GradientVoxel r_1 = linearInterpolate(getGradientVoxel(x, y, z), getGradientVoxel(x + 1, y, z), fac_x);
+    GradientVoxel r_2 = linearInterpolate(getGradientVoxel(x, y + 1, z), getGradientVoxel(x + 1, y + 1, z), fac_x);
+    GradientVoxel r_3 = linearInterpolate(getGradientVoxel(x, y, z + 1), getGradientVoxel(x + 1, y, z + 1), fac_x);
+    GradientVoxel r_4 = linearInterpolate(getGradientVoxel(x, y + 1, z + 1), getGradientVoxel(x + 1, y + 1, z + 1), fac_x);
+
+    // Interpolate resulting gradients for the other axes
+    GradientVoxel r_5 = linearInterpolate(r_1, r_2, fac_y);
+    GradientVoxel r_6 = linearInterpolate(r_3, r_4, fac_y);
+    return linearInterpolate(r_5, r_6, fac_z);
 }
 
 // ======= TODO : IMPLEMENT ========
@@ -123,7 +142,9 @@ GradientVoxel GradientVolume::getGradientVoxelLinearInterpolate(const glm::vec3&
 // At t=0, linearInterpolate should return g0 and at t=1 it returns g1.
 GradientVoxel GradientVolume::linearInterpolate(const GradientVoxel& g0, const GradientVoxel& g1, float factor)
 {
-    return GradientVoxel {};
+    glm::vec3 result = (1 - factor) * g0.dir + factor * g1.dir;
+    float mag = sqrt(result.x * result.x + result.y * result.y + result.z * result.z);
+    return GradientVoxel { result, mag};
 }
 
 // This function returns a gradientVoxel without using interpolation
