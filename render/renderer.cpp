@@ -236,7 +236,33 @@ glm::vec4 Renderer::getTFValue(float val) const
 // The 2D transfer function settings can be accessed through m_config.TF2DIntensity and m_config.TF2DRadius.
 float Renderer::getTF2DOpacity(float intensity, float gradientMagnitude) const
 {
-    return 0.0f;
+
+    float opacity = 0.0;
+    // // System.err.println(gradMagnitude);
+    // // Inside Triangle
+    // // detection happens using a shifted modulus function
+    // // y = (max_grad /rad) | x - base | -> defines triangle lines in our 2D plot
+    // float slope = (gradients.getMaxGradientMagnitude() / material_r);
+    // float input = (voxelValue - material_value);
+    // // defining line definition || input
+    // if (voxelValue - material_value < 0.0) {
+    //   input = -input;
+    // }
+
+    // // area inside triangle
+    // if (gradMagnitude >= slope * input) {
+    //   // weird interpolation error
+    //   // We want to interpolate from apex to edge ( input to border at input in x
+    //   // direction)
+    //   // if y = a(x -b) - > x = y/a +b
+    //   opacity = tFunc2D.color.a * interpolate(1, 0, (float) (input / (gradMagnitude / slope)));
+    //   // System.err.println("My x (o to" + material_value + ")" + "," + input);
+    //   // System.err.println("My factor " + input/ (input + material_value));
+    //   // System.err.println("My value " + opacity);
+
+    // }
+    return opacity;
+
 }
 
 // This function computes if a ray intersects with the axis-aligned bounding box around the volume.
