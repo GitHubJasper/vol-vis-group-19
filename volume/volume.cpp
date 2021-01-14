@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include<cmath>
+#include <math.h>  
 
 struct Header {
     glm::ivec3 dim;
@@ -180,14 +181,75 @@ float Volume::cubicInterpolate(float g0, float g1, float g2, float g3, float fac
 // This function returns the value of a bicubic interpolation
 float Volume::bicubicInterpolateXY(const glm::vec2& xyCoord, int z) const
 {
-    return 0.0f;
+        /* notice that in this framework we assume that the distance between neighbouring voxels is 1 in all directions*/
+
+        // get closest coordinates to our point
+        int x = static_cast<int>(xyCoord.x);
+        int y = static_cast<int>(xyCoord.y);
+
+
+        // get our fractional distances from position in x and y directions
+        float fac_x = (float) xyCoord.x - x;
+        float fac_y = (float) xyCoord.y - y;
+
+        // along x direction, construct 4 points interpolated x
+        float bot_line_x = cubicInterpolate(getVoxel(x-1, y, z),
+                                            getVoxel(x, y, z),
+                                            getVoxel(x+1, y, z),
+                                            getVoxel(x+2, y, z), fac_x);
+
+
+        float top_line_x =  cubicInterpolate(getVoxel(x-1, y+1, z),
+                                             getVoxel(x, y+1, z),
+                                             getVoxel(x+1, y+1, z),
+                                             getVoxel(x+2, y+1, z), fac_x);
+
+
+        float before_bot_line_x = cubicInterpolate(getVoxel(x-1, y-1, z),
+                                                   getVoxel(x, y-1, z),
+                                                   getVoxel(x+1, y-1, z),
+                                                   getVoxel(x+2, y-1, z), fac_x);
+
+
+        float after_top_line_x =  cubicInterpolate(getVoxel(x-1, y+2, z),
+                                                   getVoxel(x, y+2, z),
+                                                   getVoxel(x+1, y+2, z),
+                                                   getVoxel(x+2, y+2, z), fac_x);
+
+        // along y direction, get final value
+        float result =  cubicInterpolate(before_bot_line_x,
+                                         bot_line_x,
+                                         top_line_x,
+                                         after_top_line_x, fac_y);
+
+        return result; 
 }
 
 // ======= TODO : IMPLEMENT ========
 // This function computes the tricubic interpolation at coord
 float Volume::getVoxelTriCubicInterpolate(const glm::vec3& coord) const
 {
-    return 0.0f;
+        if (coord.x < 1 || coord.x > (m_dim.x-3) || coord.y < 1 || coord.y > (m_dim.y-3)
+                || coord.z < 1 || coord.z > (m_dim.z-3)) {
+            return 0;
+        }
+
+
+        /* notice that in this framework we assume that the distance between neighbouring voxels is 1 in all directions*/
+        int z =  static_cast<int>(coord.z);
+        float fac_z = (float) coord.z - z;
+
+
+        // Get values for the 4 XY planes , along the z direction
+
+        float before_bot_plane_z = bicubicInterpolateXY(coord, z-1);
+        float bot_plane_z = bicubicInterpolateXY(coord, z);
+        float top_plane_z = bicubicInterpolateXY(coord, z+1);
+        float after_top_plane_z = bicubicInterpolateXY(coord,z+2 );
+        // to be implemented              
+        float result = cubicInterpolate(before_bot_plane_z,bot_plane_z,top_plane_z,after_top_plane_z, fac_z) ;
+        result = (result > 0)?result: 0;
+        return result; 
 }
 
 // Load an fld volume data file
