@@ -167,10 +167,10 @@ float Volume::cubicInterpolate(float g0, float g1, float g2, float g3, float fac
         //        float k_dist_g3 = 2 - factor;
 
         //  reduced forms of kernel values
-        float c_0 = (float) (a* pow(factor, 3)  -  2*a* pow(factor, 2)  +  a*factor);
-        float c_1 = (float) ((a+2) * pow(factor, 3)  -  (a+3)* pow(factor, 2)  +  1);
-        float c_2 = (float) ((-a-2) * pow(factor, 3)  +  (2*a+3)* pow(factor, 2)  -  a*factor);
-        float c_3 = (float) (-a* pow(factor, 3)  +  a* pow(factor, 2) );
+        float c_0 = static_cast<float>((a* pow(factor, 3)  -  2*a* pow(factor, 2)  +  a*factor)) ;
+        float c_1 = static_cast<float> (((a+2) * pow(factor, 3)  -  (a+3)* pow(factor, 2)  +  1));
+        float c_2 = static_cast<float> (((-a-2) * pow(factor, 3)  +  (2*a+3)* pow(factor, 2)  -  a*factor));
+        float c_3 = static_cast<float> ((-a* pow(factor, 3)  +  a* pow(factor, 2) ));
 
         // value at interpolation point
         float result = c_0 * g0 + c_1 * g1 + c_2 * g2 + c_3 * g3;
@@ -189,8 +189,8 @@ float Volume::bicubicInterpolateXY(const glm::vec2& xyCoord, int z) const
 
 
         // get our fractional distances from position in x and y directions
-        float fac_x = (float) xyCoord.x - x;
-        float fac_y = (float) xyCoord.y - y;
+        float fac_x =  xyCoord.x - float(x);
+        float fac_y =  xyCoord.y - float(y);
 
         // along x direction, construct 4 points interpolated x
         float bot_line_x = cubicInterpolate(getVoxel(x-1, y, z),
@@ -229,15 +229,13 @@ float Volume::bicubicInterpolateXY(const glm::vec2& xyCoord, int z) const
 // This function computes the tricubic interpolation at coord
 float Volume::getVoxelTriCubicInterpolate(const glm::vec3& coord) const
 {
-        if (coord.x < 1 || coord.x > (m_dim.x-3) || coord.y < 1 || coord.y > (m_dim.y-3)
-                || coord.z < 1 || coord.z > (m_dim.z-3)) {
-            return 0;
-        }
+        if (glm::any(glm::lessThan(coord, glm::vec3(0))) || glm::any(glm::greaterThanEqual(coord, glm::vec3(m_dim - 1))))
+            return 0.0f;
 
 
         /* notice that in this framework we assume that the distance between neighbouring voxels is 1 in all directions*/
         int z =  static_cast<int>(coord.z);
-        float fac_z = (float) coord.z - z;
+        float fac_z = coord.z - float(z);
 
 
         // Get values for the 4 XY planes , along the z direction
