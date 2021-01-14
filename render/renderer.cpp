@@ -175,8 +175,20 @@ glm::vec4 Renderer::traceRayMIP(const Ray& ray, float sampleStep) const
 // Use the bisectionAccuracy function (to be implemented) to get a more precise isosurface location between two steps.
 glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 {
-    static constexpr glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
-    return glm::vec4(isoColor, 1.0f);
+    glm::vec3 lightDirection = m_pCamera->position();
+
+    glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
+    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
+    const glm::vec3 increment = sampleStep * ray.direction;
+    for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
+        const float val = m_pVolume->getVoxelInterpolate(samplePos);
+        if (val > m_config.isoValue) {
+            float correctedT = bisectionAccuracy(ray, t - sampleStep, t, m_config.isoValue);
+            glm::vec3 correctedSample = ray.origin + correctedT * ray.direction;
+            return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction), 1.0f);
+        }
+    }
+    return glm::vec4(glm::vec3 { 0.0f, 0.0f, 0.0f }, 0.0f);
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -185,7 +197,29 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 // iterations such that it does not get stuck in degerate cases.
 float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoValue) const
 {
-    return 0.0f;
+    int max_it = 2;
+    int iter = 0;
+    float resultIso = 0;
+    // Get the difference to the previous value
+    float t_mid = t1;
+    while (iter < max_it && abs((isoValue - resultIso) / isoValue) >= 0.01) {
+        // Get the difference to the target value
+        t_mid = (t0 + t1) / 2;
+
+        // Get iso value at mid point
+        glm::vec3 samplePos = t_mid * ray.direction;
+        resultIso = m_pVolume->getVoxelInterpolate(samplePos);
+
+        // Set new bounds for next iteration
+        if (resultIso > isoValue) {
+            t1 = t_mid;
+        } else {
+            t0 = t_mid;
+        }
+        iter++;
+    }
+    // Get the position between both steps given the scale
+    return t_mid;
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -213,7 +247,23 @@ glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 // You are free to choose any specular power that you'd like.
 glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::GradientVoxel& gradient, const glm::vec3& L, const glm::vec3& V)
 {
-    return glm::vec3(0.0f);
+    // Define phong components
+    float k_a = 0.1f; // Ambient
+    float k_d = 0.7f; // Diffusion
+    float k_s = 0.2f; // Specular
+    float alpha = 100.0f; // Shininess (lower = wide and dimm, higher = small and bright)
+    glm::vec3 nGradient = gradient.dir / gradient.magnitude;
+    glm::vec3 nLight = glm::normalize(-1.0f * L);
+    float reflectDot = glm::dot(nLight, nGradient);
+    glm::vec3 reflectVector = nLight - 2 * reflectDot * nGradient;
+    float specularIntensity = pow(glm::dot(reflectVector, glm::normalize(V)), alpha);
+    // Calculate the weights
+    float sWeight = std::max(k_s * specularIntensity, 0.0f);
+    float dWeight = std::max(k_d * reflectDot, 0.0f);
+
+    // Add weights and set the final color
+    float weight = k_a + dWeight + sWeight;
+    return color * weight;
 }
 
 // ======= DO NOT MODIFY THIS FUNCTION ========
@@ -223,7 +273,7 @@ glm::vec4 Renderer::getTFValue(float val) const
 {
     // Map value from [m_config.tfColorMapIndexStart, m_config.tfColorMapIndexStart + m_config.tfColorMapIndexRange) to [0, 1) .
     const float range01 = (val - m_config.tfColorMapIndexStart) / m_config.tfColorMapIndexRange;
-    const size_t i = std::min(static_cast<size_t>(range01 * static_cast<float>(m_config.tfColorMap.size())), m_config.tfColorMap.size()-1);
+    const size_t i = std::min(static_cast<size_t>(range01 * static_cast<float>(m_config.tfColorMap.size())), m_config.tfColorMap.size() - 1);
     return m_config.tfColorMap[i];
 }
 
