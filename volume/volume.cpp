@@ -10,6 +10,7 @@
 #include <gsl/span>
 #include <iostream>
 #include <string>
+#include<cmath>
 
 struct Header {
     glm::ivec3 dim;
@@ -19,6 +20,7 @@ static Header readHeader(std::ifstream& ifs);
 static float computeMinimum(gsl::span<const uint16_t> data);
 static float computeMaximum(gsl::span<const uint16_t> data);
 static std::vector<int> computeHistogram(gsl::span<const uint16_t> data);
+float a = -0.75;
 
 namespace volume {
 
@@ -148,14 +150,30 @@ float Volume::linearInterpolate(float g0, float g1, float factor)
 // This function represents the h(x) function, which returns the weight of the cubic interpolation kernel for a given position x
 float Volume::weight(float x)
 {
-    return 0.0f;
+    return 1.0f;
 }
 
 // ======= TODO : IMPLEMENT ========
 // This functions returns the results of a cubic interpolation using 4 values and a factor
 float Volume::cubicInterpolate(float g0, float g1, float g2, float g3, float factor)
 {
-    return 0.0f;
+        // Lets define our values of our kernel at points g0 to g1
+        // kernel is centered in interpolation point  (g1 + factor)
+
+        // distances from kernel origin to all samples
+        //        float k_dist_g0 = factor + 1;
+        //        float k_dist_g2 = 1 - factor;
+        //        float k_dist_g3 = 2 - factor;
+
+        //  reduced forms of kernel values
+        float c_0 = (float) (a* pow(factor, 3)  -  2*a* pow(factor, 2)  +  a*factor);
+        float c_1 = (float) ((a+2) * pow(factor, 3)  -  (a+3)* pow(factor, 2)  +  1);
+        float c_2 = (float) ((-a-2) * pow(factor, 3)  +  (2*a+3)* pow(factor, 2)  -  a*factor);
+        float c_3 = (float) (-a* pow(factor, 3)  +  a* pow(factor, 2) );
+
+        // value at interpolation point
+        float result = c_0 * g0 + c_1 * g1 + c_2 * g2 + c_3 * g3;
+    return result;
 }
 
 // ======= TODO : IMPLEMENT ========
