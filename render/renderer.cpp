@@ -180,12 +180,31 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
     glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
     glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
     const glm::vec3 increment = sampleStep * ray.direction;
+
+    // Prepare toon shading bands
+    std::vector<std::pair<float, float>> diffuseBands = {
+        std::make_pair(0.2f, 0.2f),
+        std::make_pair(0.5f, 0.5f),
+        std::make_pair(0.7f, 1.0f),
+    };
+    std::vector<std::pair<float, float>> specularBands = {
+        std::make_pair(0.1f, 0.5f),
+        std::make_pair(0.5f, 1.0f)
+    };
+
     for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
         const float val = m_pVolume->getVoxelInterpolate(samplePos);
         if (val > m_config.isoValue) {
             float correctedT = bisectionAccuracy(ray, t - sampleStep, t, m_config.isoValue);
             glm::vec3 correctedSample = ray.origin + correctedT * ray.direction;
-            return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction), 1.0f);
+            switch (m_config.shadingMode) {
+            case ShadingMode::Phong: {
+                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction), 1.0f);
+            }
+            case ShadingMode::Toon: {
+                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
+            }
+            }
         }
     }
     return glm::vec4(glm::vec3 { 0.0f, 0.0f, 0.0f }, 0.0f);
@@ -197,24 +216,35 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 // iterations such that it does not get stuck in degerate cases.
 float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoValue) const
 {
-    int max_it = 2;
+    glm::vec3 pos0 = ray.origin + t0 * ray.direction;
+    glm::vec3 pos1 = ray.origin + t1 * ray.direction;
+    float iso0 = m_pVolume->getVoxelInterpolate(pos0);
+    float iso1 = m_pVolume->getVoxelInterpolate(pos1);
+    int max_it = 4;
     int iter = 0;
-    float resultIso = 0;
-    // Get the difference to the previous value
+    float iso_mid = iso1;
     float t_mid = t1;
-    while (iter < max_it && abs((isoValue - resultIso) / isoValue) >= 0.01) {
+    while (iter < max_it && abs(isoValue - iso_mid) >= 0.01) {
+        // Get the difference to the previous value
+        float diffPrev = iso1 - iso0;
         // Get the difference to the target value
-        t_mid = (t0 + t1) / 2;
+        float diffIso = iso1 - isoValue;
+        // Get the scale based on these differences
+        float scale = diffIso / diffPrev;
+        // Get the difference to the target value
+        t_mid = t0 + (t1 - t0) * scale;
 
         // Get iso value at mid point
-        glm::vec3 samplePos = t_mid * ray.direction;
-        resultIso = m_pVolume->getVoxelInterpolate(samplePos);
+        glm::vec3 samplePos = ray.origin + t_mid * ray.direction;
+        iso_mid = m_pVolume->getVoxelInterpolate(samplePos);
 
         // Set new bounds for next iteration
-        if (resultIso > isoValue) {
+        if (iso_mid > isoValue) {
             t1 = t_mid;
+            iso1 = iso_mid;
         } else {
             t0 = t_mid;
+            iso0 = iso_mid;
         }
         iter++;
     }
@@ -236,6 +266,49 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
 glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 {
     return glm::vec4(0.0f);
+}
+
+// ======= TODO: IMPLEMENT ========
+// Compute Phong Shading given the voxel color (material color), the gradient, the light vector and view vector.
+// You can find out more about the Phong shading model at:
+// https://en.wikipedia.org/wiki/Phong_reflection_model
+//
+// Use the given color for the ambient/specular/diffuse (you are allowed to scale these constants by a scalar value).
+// You are free to choose any specular power that you'd like.
+glm::vec3 Renderer::computeToonShading(const glm::vec3& color, const volume::GradientVoxel& gradient, const glm::vec3& L, const glm::vec3& V,
+    std::vector<std::pair<float, float>> diffuseBands, std::vector<std::pair<float, float>> specularBands)
+{
+    // Define phong components
+    float k_a = 0.1f; // Ambient
+    float k_d = 0.7f; // Diffusion
+    float k_s = 0.2f; // Specular
+    float alpha = 100.0f; // Shininess (lower = wide and dimm, higher = small and bright)
+    glm::vec3 nGradient = gradient.dir / gradient.magnitude;
+    glm::vec3 nLight = glm::normalize(-1.0f * L);
+    float reflectDot = glm::dot(nLight, nGradient);
+    glm::vec3 reflectVector = nLight - 2 * reflectDot * nGradient;
+    float specularIntensity = pow(glm::dot(reflectVector, glm::normalize(V)), alpha);
+    // Calculate the weights
+    float sWeight = std::max(k_s * specularIntensity, 0.0f);
+    for (const std::pair<float, float>& band : specularBands) {
+        // Check if band should apply
+        if (band.first < specularIntensity) {
+            // Use band value to set the specular weight
+            sWeight = k_s * band.second;
+        }
+    }
+    float dWeight = std::max(k_d * reflectDot, 0.0f);
+    for (const std::pair<float, float>& band : diffuseBands) {
+        // Check if band should apply
+        if (band.first < reflectDot) {
+            // Use band value to set the diffusion weight
+            dWeight = k_d * band.second;
+        }
+    }
+
+    // Add weights and set the final color
+    float weight = k_a + dWeight + sWeight;
+    return color * weight;
 }
 
 // ======= TODO: IMPLEMENT ========
