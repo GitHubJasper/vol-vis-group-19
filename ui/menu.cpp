@@ -144,6 +144,11 @@ void Menu::showRayCastTab(std::chrono::duration<double> renderTime)
         ImGui::NewLine();
 
         ImGui::DragFloat("Resolution scale", &m_resolutionScale, 0.0025f, 0.25f, 2.0f);
+
+        ImGui::NewLine();
+
+        ImGui::DragInt("Max bisection iterations", &m_renderConfig.maxIterations, 1.0f, 0.0f, 50.0f);
+
         m_renderConfig.renderResolution = glm::ivec2(glm::vec2(m_baseRenderResolution) * m_resolutionScale);
 
         ImGui::NewLine();

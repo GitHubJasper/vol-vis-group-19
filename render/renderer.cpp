@@ -178,8 +178,6 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
     glm::vec3 lightDirection = m_pCamera->position();
 
     glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
-    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
-    const glm::vec3 increment = sampleStep * ray.direction;
 
     // Prepare toon shading bands
     std::vector<std::pair<float, float>> diffuseBands = {
@@ -191,21 +189,23 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
         std::make_pair(0.1f, 0.5f),
         std::make_pair(0.5f, 1.0f)
     };
-
-    for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
+    float t_previous = ray.tmin;
+    for (float t = ray.tmin; t <= ray.tmax; t += sampleStep) {
+        glm::vec3 samplePos = ray.origin + t * ray.direction;
         const float val = m_pVolume->getVoxelInterpolate(samplePos);
-        if (val > m_config.isoValue) {
-            float correctedT = bisectionAccuracy(ray, t - sampleStep, t, m_config.isoValue);
-            glm::vec3 correctedSample = ray.origin + correctedT * ray.direction;
+        if (val >= m_config.isoValue) {
+            t = bisectionAccuracy(ray, t_previous, t, m_config.isoValue);
+            samplePos = ray.origin + t * ray.direction;
             switch (m_config.shadingMode) {
             case ShadingMode::Phong: {
-                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction), 1.0f);
+                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), 1.0f);
             }
             case ShadingMode::Toon: {
-                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(correctedSample), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
+                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
             }
             }
         }
+        t_previous = t;
     }
     return glm::vec4(glm::vec3 { 0.0f, 0.0f, 0.0f }, 0.0f);
 }
@@ -220,11 +220,11 @@ float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoV
     glm::vec3 pos1 = ray.origin + t1 * ray.direction;
     float iso0 = m_pVolume->getVoxelInterpolate(pos0);
     float iso1 = m_pVolume->getVoxelInterpolate(pos1);
-    int max_it = 4;
+
     int iter = 0;
     float iso_mid = iso1;
     float t_mid = t1;
-    while (iter < max_it && abs(isoValue - iso_mid) >= 0.01) {
+    while (iter < m_config.maxIterations && abs(isoValue - iso_mid) >= 0.01) {
         // Get the difference to the previous value
         float diffPrev = iso1 - iso0;
         // Get the difference to the target value
@@ -233,7 +233,6 @@ float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoV
         float scale = diffIso / diffPrev;
         // Get the difference to the target value
         t_mid = t0 + (t1 - t0) * scale;
-
         // Get iso value at mid point
         glm::vec3 samplePos = ray.origin + t_mid * ray.direction;
         iso_mid = m_pVolume->getVoxelInterpolate(samplePos);

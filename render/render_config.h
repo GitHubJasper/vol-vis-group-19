@@ -25,6 +25,7 @@ struct RenderConfig {
     glm::ivec2 renderResolution;
 
     bool volumeShading { false };
+    int maxIterations { 10 };
     float isoValue { 95.0f };
 
     // 1D transfer function.
