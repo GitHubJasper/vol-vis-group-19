@@ -1,8 +1,8 @@
 #pragma once
 #include <array>
+#include <cstring> // memcmp  // macOS change TH
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
-#include <cstring> // memcmp  // macOS change TH
 
 namespace render {
 
@@ -14,11 +14,18 @@ enum class RenderMode {
     RenderTF2D
 };
 
+enum class ShadingMode {
+    Phong,
+    Toon
+};
+
 struct RenderConfig {
     RenderMode renderMode { RenderMode::RenderSlicer };
+    ShadingMode shadingMode { ShadingMode::Phong };
     glm::ivec2 renderResolution;
 
     bool volumeShading { false };
+    int maxIterations { 10 };
     float isoValue { 95.0f };
 
     // 1D transfer function.

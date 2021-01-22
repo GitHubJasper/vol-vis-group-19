@@ -144,6 +144,11 @@ void Menu::showRayCastTab(std::chrono::duration<double> renderTime)
         ImGui::NewLine();
 
         ImGui::DragFloat("Resolution scale", &m_resolutionScale, 0.0025f, 0.25f, 2.0f);
+
+        ImGui::NewLine();
+
+        ImGui::DragInt("Max bisection iterations", &m_renderConfig.maxIterations, 1.0f, 0.0f, 50.0f);
+
         m_renderConfig.renderResolution = glm::ivec2(glm::vec2(m_baseRenderResolution) * m_resolutionScale);
 
         ImGui::NewLine();
@@ -153,6 +158,11 @@ void Menu::showRayCastTab(std::chrono::duration<double> renderTime)
         ImGui::RadioButton("Nearest Neighbour", pInterpolationModeInt, int(volume::InterpolationMode::NearestNeighbour));
         ImGui::RadioButton("Linear", pInterpolationModeInt, int(volume::InterpolationMode::Linear));
         ImGui::RadioButton("TriCubic", pInterpolationModeInt, int(volume::InterpolationMode::Cubic));
+
+        int* pShadingModeInt = reinterpret_cast<int*>(&m_renderConfig.shadingMode);
+        ImGui::Text("Shading:");
+        ImGui::RadioButton("Phong", pShadingModeInt, int(render::ShadingMode::Phong));
+        ImGui::RadioButton("Toon", pShadingModeInt, int(render::ShadingMode::Toon));
 
         ImGui::EndTabItem();
     }
