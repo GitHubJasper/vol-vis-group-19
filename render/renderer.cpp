@@ -9,6 +9,7 @@
 #include <tbb/blocked_range2d.h>
 #include <tbb/parallel_for.h>
 #include <tuple>
+#include <glm/gtx/string_cast.hpp>
 
 namespace render {
 
@@ -197,12 +198,12 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
             t = bisectionAccuracy(ray, t_previous, t, m_config.isoValue);
             samplePos = ray.origin + t * ray.direction;
             switch (m_config.shadingMode) {
-            case ShadingMode::Phong: {
-                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), 1.0f);
-            }
-            case ShadingMode::Toon: {
-                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
-            }
+                case ShadingMode::Phong: {
+                    return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), 1.0f);
+                }
+                case ShadingMode::Toon: {
+                    return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
+                }
             }
         }
         t_previous = t;
@@ -262,20 +263,25 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
     r = g = b = 0.0;
     double alpha = 0.0;
     double opacity = 0;
-    glm::vec4 colorAux;
+    glm::vec4 sampleColor;
+    glm::vec3 lightDirection = m_pCamera->position();
 
     // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
     glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
     const glm::vec3 increment = sampleStep * ray.direction;
     for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
         const float val = m_pVolume->getVoxelInterpolate(samplePos);
-        colorAux = getTFValue(val);
-        opacity = (1 - alpha) * colorAux.a;
-        // calculating ci
-          r += opacity * colorAux.r;
-          g += opacity * colorAux.g;
-          b += opacity * colorAux.b;
-          alpha += opacity;
+        sampleColor = getTFValue(val);
+        opacity = (1 - alpha) * sampleColor.a;
+        if (opacity > 0) {
+            sampleColor = glm::vec4(computePhongShading(sampleColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), sampleColor.a);
+            // calculating ci
+            r += opacity * sampleColor.r;
+            g += opacity * sampleColor.g;
+            b += opacity * sampleColor.b;
+            alpha += opacity;
+        }
+        
     }
     //return glm::vec4(glm::vec3(maxVal) / m_pVolume->maximum(), 1.0f);
     return glm::vec4(r,g,b,alpha);
@@ -354,7 +360,12 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
     // Calculate the weights
     float sWeight = std::max(k_s * specularIntensity, 0.0f);
     float dWeight = std::max(k_d * reflectDot, 0.0f);
-
+    if (std::isnan(sWeight)) {
+        sWeight = 0.0f;
+    }
+    if (std::isnan(dWeight)) {
+        dWeight = 0.0f;
+    }
     // Add weights and set the final color
     float weight = k_a + dWeight + sWeight;
     return color * weight;
