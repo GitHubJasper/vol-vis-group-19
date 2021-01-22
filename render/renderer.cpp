@@ -292,7 +292,34 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
 // Use the getTF2DOpacity function that you implemented to compute the opacity according to the 2D transfer function.
 glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 {
-    return glm::vec4(0.0f);
+     // Initialization of the colors as floating point values
+    double r, g, b;
+    r = g = b = 0.0;
+    double alpha = 0.0;
+    double opacity = 0;
+    glm::vec4 colorAux;
+
+    // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
+    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
+    const glm::vec3 increment = sampleStep * ray.direction;
+    for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
+        const float val = m_pVolume->getVoxelInterpolate(samplePos);
+    
+        // 2D transfer function
+        opacity = (1 - alpha)
+            * getTF2DOpacity( val, (m_pGradientVolume->getGradientVoxel(samplePos).magnitude));
+        if (opacity > 0) {
+          colorAux = m_config.TF2DColor;
+        // calculating ci
+          r += opacity * colorAux.r;
+          g += opacity * colorAux.g;
+          b += opacity * colorAux.b;
+          alpha += opacity;
+        }
+    }
+    //return glm::vec4(glm::vec3(maxVal) / m_pVolume->maximum(), 1.0f);
+    return glm::vec4(r,g,b,alpha);
+    //return glm::vec4(0.0f);
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -392,30 +419,36 @@ glm::vec4 Renderer::getTFValue(float val) const
 float Renderer::getTF2DOpacity(float intensity, float gradientMagnitude) const
 {
 
+
+    float material_value = m_config.TF2DIntensity;
+    float material_r =  m_config.TF2DRadius;
     float opacity = 0.0;
-    // // System.err.println(gradMagnitude);
-    // // Inside Triangle
-    // // detection happens using a shifted modulus function
-    // // y = (max_grad /rad) | x - base | -> defines triangle lines in our 2D plot
-    // float slope = (gradients.getMaxGradientMagnitude() / material_r);
-    // float input = (voxelValue - material_value);
-    // // defining line definition || input
-    // if (voxelValue - material_value < 0.0) {
-    //   input = -input;
-    // }
+    // System.err.println(gradMagnitude);
+    // Inside Triangle
+    // detection happens using a shifted modulus function
+    // y = (max_grad /rad) | x - base | -> defines triangle lines in our 2D plot
+    float slope = (m_pGradientVolume->maxMagnitude() / material_r);
+    float input = (intensity - material_value);
+    // defining line definition || input
+    if (intensity - material_value < 0.0) {
+      input = -input;
+    }
 
-    // // area inside triangle
-    // if (gradMagnitude >= slope * input) {
-    //   // weird interpolation error
-    //   // We want to interpolate from apex to edge ( input to border at input in x
-    //   // direction)
-    //   // if y = a(x -b) - > x = y/a +b
-    //   opacity = tFunc2D.color.a * interpolate(1, 0, (float) (input / (gradMagnitude / slope)));
-    //   // System.err.println("My x (o to" + material_value + ")" + "," + input);
-    //   // System.err.println("My factor " + input/ (input + material_value));
-    //   // System.err.println("My value " + opacity);
+    // area inside triangle
+    if (gradientMagnitude >= slope * input) {
+      // weird interpolation error
+      // We want to interpolate from apex to edge ( input to border at input in x
+      // direction)
+      // if y = a(x -b) - > x = y/a +b
 
-    // }
+     float factor  = (float) (input / (gradientMagnitude / slope));
+     float  interp_val = (1 - factor) * 1 + factor * 0;
+      opacity = m_config.TF2DColor.a * interp_val;
+      // System.err.println("My x (o to" + material_value + ")" + "," + input);
+      // System.err.println("My factor " + input/ (input + material_value));
+      // System.err.println("My value " + opacity);
+
+    }
     return opacity;
 
 }
