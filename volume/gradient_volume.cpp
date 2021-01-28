@@ -4,6 +4,7 @@
 #include <glm/geometric.hpp>
 #include <glm/vector_relational.hpp>
 #include <gsl/span>
+#include <glm/gtx/string_cast.hpp>
 
 namespace volume {
 
@@ -115,10 +116,13 @@ GradientVoxel GradientVolume::getGradientVoxelNN(const glm::vec3& coord) const
 // Use the linearInterpolate function that you implemented below.
 GradientVoxel GradientVolume::getGradientVoxelLinearInterpolate(const glm::vec3& coord) const
 {
+    if (glm::any(glm::lessThan(coord, glm::vec3(0))) || glm::any(glm::greaterThanEqual(coord, glm::vec3(m_dim - 1))))
+        return GradientVoxel { glm::vec3 { 0.0f, 0.0f, 0.0f }, 0.0f };
+
     // Find the lower corner of the cube which the coordinate fits in
-    int x = floor(coord.x);
-    int y = floor(coord.y);
-    int z = floor(coord.z);
+    const int x = std::floor(coord.x);
+    const int y = std::floor(coord.y);
+    const int z = std::floor(coord.z);
 
     // Determine the factors for all axes
     float fac_x = coord.x - x;

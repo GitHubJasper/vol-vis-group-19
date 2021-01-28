@@ -5,6 +5,7 @@
 #include <functional>
 #include <glm/common.hpp>
 #include <glm/gtx/component_wise.hpp>
+#include <glm/gtx/string_cast.hpp>
 #include <iostream>
 #include <tbb/blocked_range2d.h>
 #include <tbb/parallel_for.h>
@@ -176,16 +177,15 @@ glm::vec4 Renderer::traceRayMIP(const Ray& ray, float sampleStep) const
 glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 {
     glm::vec3 lightDirection = m_pCamera->position();
-
     glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
 
-    // Prepare toon shading bands
-    std::vector<std::pair<float, float>> diffuseBands = {
+    // Prepare toon shading bins pair<cutoff range endpoint, assigned value>
+    std::vector<std::pair<float, float>> diffuseBins = {
         std::make_pair(0.2f, 0.2f),
         std::make_pair(0.5f, 0.5f),
         std::make_pair(0.7f, 1.0f),
     };
-    std::vector<std::pair<float, float>> specularBands = {
+    std::vector<std::pair<float, float>> specularBins = {
         std::make_pair(0.1f, 0.5f),
         std::make_pair(0.5f, 1.0f)
     };
@@ -198,10 +198,24 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
             samplePos = ray.origin + t * ray.direction;
             switch (m_config.shadingMode) {
             case ShadingMode::Phong: {
-                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), 1.0f);
+                return glm::vec4(
+                    computePhongShading(
+                        isoColor,
+                        m_pGradientVolume->getGradientVoxel(samplePos),
+                        lightDirection,
+                        ray.direction),
+                    1.0f);
             }
             case ShadingMode::Toon: {
-                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction, diffuseBands, specularBands), 1.0f);
+                return glm::vec4(
+                    computeToonShading(
+                        isoColor,
+                        m_pGradientVolume->getGradientVoxel(samplePos),
+                        lightDirection,
+                        ray.direction,
+                        diffuseBins,
+                        specularBins),
+                    1.0f);
             }
             }
         }
@@ -262,23 +276,29 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
     r = g = b = 0.0;
     double alpha = 0.0;
     double opacity = 0;
-    glm::vec4 colorAux;
+    glm::vec4 sampleColor;
+    glm::vec3 lightDirection = m_pCamera->position();
 
     // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
     glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
     const glm::vec3 increment = sampleStep * ray.direction;
     for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
         const float val = m_pVolume->getVoxelInterpolate(samplePos);
-        colorAux = getTFValue(val);
-        opacity = (1 - alpha) * colorAux.a;
-        // calculating ci
-          r += opacity * colorAux.r;
-          g += opacity * colorAux.g;
-          b += opacity * colorAux.b;
-          alpha += opacity;
+        sampleColor = getTFValue(val);
+        opacity = (1 - alpha) * sampleColor.a;
+        if (opacity > 0) {
+            if (m_config.volumeShading) {
+                sampleColor = glm::vec4(computePhongShading(sampleColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), sampleColor.a);
+            }
+            // calculating ci
+            r += opacity * sampleColor.r;
+            g += opacity * sampleColor.g;
+            b += opacity * sampleColor.b;
+            alpha += opacity;
+        }
     }
     //return glm::vec4(glm::vec3(maxVal) / m_pVolume->maximum(), 1.0f);
-    return glm::vec4(r,g,b,alpha);
+    return glm::vec4(r, g, b, alpha);
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -286,33 +306,37 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
 // Use the getTF2DOpacity function that you implemented to compute the opacity according to the 2D transfer function.
 glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 {
-     // Initialization of the colors as floating point values
+    // Initialization of the colors as floating point values
     double r, g, b;
     r = g = b = 0.0;
     double alpha = 0.0;
     double opacity = 0;
     glm::vec4 colorAux;
+    glm::vec3 lightDirection = m_pCamera->position();
 
     // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
     glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
     const glm::vec3 increment = sampleStep * ray.direction;
     for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
         const float val = m_pVolume->getVoxelInterpolate(samplePos);
-    
+
         // 2D transfer function
         opacity = (1 - alpha)
-            * getTF2DOpacity( val, (m_pGradientVolume->getGradientVoxel(samplePos).magnitude));
+            * getTF2DOpacity(val, (m_pGradientVolume->getGradientVoxel(samplePos).magnitude));
         if (opacity > 0) {
-          colorAux = m_config.TF2DColor;
-        // calculating ci
-          r += opacity * colorAux.r;
-          g += opacity * colorAux.g;
-          b += opacity * colorAux.b;
-          alpha += opacity;
+            colorAux = m_config.TF2DColor;
+            if (m_config.volumeShading) {
+                colorAux = glm::vec4(computePhongShading(colorAux, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), colorAux.a);
+            }
+            // calculating ci
+            r += opacity * colorAux.r;
+            g += opacity * colorAux.g;
+            b += opacity * colorAux.b;
+            alpha += opacity;
         }
     }
     //return glm::vec4(glm::vec3(maxVal) / m_pVolume->maximum(), 1.0f);
-    return glm::vec4(r,g,b,alpha);
+    return glm::vec4(r, g, b, alpha);
     //return glm::vec4(0.0f);
 }
 
@@ -324,13 +348,13 @@ glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 // Use the given color for the ambient/specular/diffuse (you are allowed to scale these constants by a scalar value).
 // You are free to choose any specular power that you'd like.
 glm::vec3 Renderer::computeToonShading(const glm::vec3& color, const volume::GradientVoxel& gradient, const glm::vec3& L, const glm::vec3& V,
-    std::vector<std::pair<float, float>> diffuseBands, std::vector<std::pair<float, float>> specularBands)
+    std::vector<std::pair<float, float>> diffuseBins, std::vector<std::pair<float, float>> specularBins)
 {
     // Define phong components
-    float k_a = 0.1f; // Ambient
-    float k_d = 0.7f; // Diffusion
-    float k_s = 0.2f; // Specular
-    float alpha = 100.0f; // Shininess (lower = wide and dimm, higher = small and bright)
+    float k_a = 0.3f; // Ambient
+    float k_d = 0.4f; // Diffusion
+    float k_s = 0.3f; // Specular
+    float alpha = 20.0f; // Shininess (lower = wide and dimm, higher = small and bright)
     glm::vec3 nGradient = gradient.dir / gradient.magnitude;
     glm::vec3 nLight = glm::normalize(-1.0f * L);
     float reflectDot = glm::dot(nLight, nGradient);
@@ -338,19 +362,19 @@ glm::vec3 Renderer::computeToonShading(const glm::vec3& color, const volume::Gra
     float specularIntensity = pow(glm::dot(reflectVector, glm::normalize(V)), alpha);
     // Calculate the weights
     float sWeight = std::max(k_s * specularIntensity, 0.0f);
-    for (const std::pair<float, float>& band : specularBands) {
-        // Check if band should apply
-        if (band.first < specularIntensity) {
-            // Use band value to set the specular weight
-            sWeight = k_s * band.second;
+    for (const std::pair<float, float>& bin : specularBins) {
+        // Check if bin should apply
+        if (bin.first < specularIntensity) {
+            // Use bin value to set the specular weight
+            sWeight = k_s * bin.second;
         }
     }
     float dWeight = std::max(k_d * reflectDot, 0.0f);
-    for (const std::pair<float, float>& band : diffuseBands) {
-        // Check if band should apply
-        if (band.first < reflectDot) {
-            // Use band value to set the diffusion weight
-            dWeight = k_d * band.second;
+    for (const std::pair<float, float>& bin : diffuseBins) {
+        // Check if bin should apply
+        if (bin.first < reflectDot) {
+            // Use bin value to set the diffusion weight
+            dWeight = k_d * bin.second;
         }
     }
 
@@ -381,7 +405,12 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
     // Calculate the weights
     float sWeight = std::max(k_s * specularIntensity, 0.0f);
     float dWeight = std::max(k_d * reflectDot, 0.0f);
-
+    if (std::isnan(sWeight)) {
+        sWeight = 0.0f;
+    }
+    if (std::isnan(dWeight)) {
+        dWeight = 0.0f;
+    }
     // Add weights and set the final color
     float weight = k_a + dWeight + sWeight;
     return color * weight;
@@ -408,9 +437,8 @@ glm::vec4 Renderer::getTFValue(float val) const
 float Renderer::getTF2DOpacity(float intensity, float gradientMagnitude) const
 {
 
-
     float material_value = m_config.TF2DIntensity;
-    float material_r =  m_config.TF2DRadius;
+    float material_r = m_config.TF2DRadius;
     float opacity = 0.0;
     // System.err.println(gradMagnitude);
     // Inside Triangle
@@ -420,26 +448,24 @@ float Renderer::getTF2DOpacity(float intensity, float gradientMagnitude) const
     float input = (intensity - material_value);
     // defining line definition || input
     if (intensity - material_value < 0.0) {
-      input = -input;
+        input = -input;
     }
 
     // area inside triangle
     if (gradientMagnitude >= slope * input) {
-      // weird interpolation error
-      // We want to interpolate from apex to edge ( input to border at input in x
-      // direction)
-      // if y = a(x -b) - > x = y/a +b
+        // weird interpolation error
+        // We want to interpolate from apex to edge ( input to border at input in x
+        // direction)
+        // if y = a(x -b) - > x = y/a +b
 
-     float factor  = (float) (input / (gradientMagnitude / slope));
-     float  interp_val = (1 - factor) * 1 + factor * 0;
-      opacity = m_config.TF2DColor.a * interp_val;
-      // System.err.println("My x (o to" + material_value + ")" + "," + input);
-      // System.err.println("My factor " + input/ (input + material_value));
-      // System.err.println("My value " + opacity);
-
+        float factor = (float)(input / (gradientMagnitude / slope));
+        float interp_val = (1 - factor) * 1 + factor * 0;
+        opacity = m_config.TF2DColor.a * interp_val;
+        // System.err.println("My x (o to" + material_value + ")" + "," + input);
+        // System.err.println("My factor " + input/ (input + material_value));
+        // System.err.println("My value " + opacity);
     }
     return opacity;
-
 }
 
 // This function computes if a ray intersects with the axis-aligned bounding box around the volume.
