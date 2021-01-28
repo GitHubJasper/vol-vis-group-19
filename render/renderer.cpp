@@ -177,10 +177,9 @@ glm::vec4 Renderer::traceRayMIP(const Ray& ray, float sampleStep) const
 glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 {
     glm::vec3 lightDirection = m_pCamera->position();
-
     glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
 
-    // Prepare toon shading bins
+    // Prepare toon shading bins pair<cutoff range endpoint, assigned value>
     std::vector<std::pair<float, float>> diffuseBins = {
         std::make_pair(0.2f, 0.2f),
         std::make_pair(0.5f, 0.5f),
@@ -199,10 +198,24 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
             samplePos = ray.origin + t * ray.direction;
             switch (m_config.shadingMode) {
             case ShadingMode::Phong: {
-                return glm::vec4(computePhongShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction), 1.0f);
+                return glm::vec4(
+                    computePhongShading(
+                        isoColor,
+                        m_pGradientVolume->getGradientVoxel(samplePos),
+                        lightDirection,
+                        ray.direction),
+                    1.0f);
             }
             case ShadingMode::Toon: {
-                return glm::vec4(computeToonShading(isoColor, m_pGradientVolume->getGradientVoxel(samplePos), lightDirection, ray.direction, diffuseBins, specularBins), 1.0f);
+                return glm::vec4(
+                    computeToonShading(
+                        isoColor,
+                        m_pGradientVolume->getGradientVoxel(samplePos),
+                        lightDirection,
+                        ray.direction,
+                        diffuseBins,
+                        specularBins),
+                    1.0f);
             }
             }
         }
